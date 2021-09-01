@@ -1,4 +1,4 @@
-module github.com/beyondstorage/go-service-example
+module github.com/beyondstorage/go-service-azfile
 
 go 1.15
 
