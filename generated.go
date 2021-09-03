@@ -25,6 +25,8 @@ const Type = "azfile"
 
 // ObjectSystemMetadata stores system metadata for object.
 type ObjectSystemMetadata struct {
+	// ServerEncrypted
+	ServerEncrypted bool
 }
 
 // GetObjectSystemMetadata will get ObjectSystemMetadata from Object.
@@ -68,31 +70,76 @@ func setStorageSystemMetadata(s *StorageMeta, sm StorageSystemMetadata) {
 	s.SetSystemMetadata(sm)
 }
 
+// WithDefaultStoragePairs will apply default_storage_pairs value to Options.
+//
+// DefaultStoragePairs set default pairs for storager actions
+func WithDefaultStoragePairs(v DefaultStoragePairs) Pair {
+	return Pair{
+		Key:   "default_storage_pairs",
+		Value: v,
+	}
+}
+
+// WithEnableVirtualDir will apply enable_virtual_dir value to Options.
+//
+// VirtualDir virtual_dir feature is designed for a service that doesn't have native dir support but wants to provide simulated operations.
+//
+// - If this feature is disabled (the default behavior), the service will behave like it doesn't have any dir support.
+// - If this feature is enabled, the service will support simulated dir behavior in create_dir, create, list, delete, and so on.
+//
+// This feature was introduced in GSP-109.
+func WithEnableVirtualDir() Pair {
+	return Pair{
+		Key:   "enable_virtual_dir",
+		Value: true,
+	}
+}
+
+// WithStorageFeatures will apply storage_features value to Options.
+//
+// StorageFeatures set storage features
+func WithStorageFeatures(v StorageFeatures) Pair {
+	return Pair{
+		Key:   "storage_features",
+		Value: v,
+	}
+}
+
 var pairMap = map[string]string{
-	"content_md5":         "string",
-	"content_type":        "string",
-	"context":             "context.Context",
-	"continuation_token":  "string",
-	"credential":          "string",
-	"endpoint":            "string",
-	"expire":              "time.Duration",
-	"http_client_options": "*httpclient.Options",
-	"interceptor":         "Interceptor",
-	"io_callback":         "func([]byte)",
-	"list_mode":           "ListMode",
-	"location":            "string",
-	"multipart_id":        "string",
-	"name":                "string",
-	"object_mode":         "ObjectMode",
-	"offset":              "int64",
-	"size":                "int64",
-	"work_dir":            "string",
+	"content_md5":           "string",
+	"content_type":          "string",
+	"context":               "context.Context",
+	"continuation_token":    "string",
+	"credential":            "string",
+	"default_storage_pairs": "DefaultStoragePairs",
+	"enable_virtual_dir":    "bool",
+	"endpoint":              "string",
+	"expire":                "time.Duration",
+	"http_client_options":   "*httpclient.Options",
+	"interceptor":           "Interceptor",
+	"io_callback":           "func([]byte)",
+	"list_mode":             "ListMode",
+	"location":              "string",
+	"multipart_id":          "string",
+	"name":                  "string",
+	"object_mode":           "ObjectMode",
+	"offset":                "int64",
+	"size":                  "int64",
+	"storage_features":      "StorageFeatures",
+	"work_dir":              "string",
 }
 var (
 	_ Storager = &Storage{}
 )
 
 type StorageFeatures struct {
+	// VirtualDir virtual_dir feature is designed for a service that doesn't have native dir support but wants to provide simulated operations.
+	//
+	// - If this feature is disabled (the default behavior), the service will behave like it doesn't have any dir support.
+	// - If this feature is enabled, the service will support simulated dir behavior in create_dir, create, list, delete, and so on.
+	//
+	// This feature was introduced in GSP-109.
+	VirtualDir bool
 }
 
 // pairStorageNew is the parsed struct
@@ -100,8 +147,22 @@ type pairStorageNew struct {
 	pairs []Pair
 
 	// Required pairs
+	HasCredential bool
+	Credential    string
+	HasEndpoint   bool
+	Endpoint      string
+	HasName       bool
+	Name          string
 	// Optional pairs
+	HasDefaultStoragePairs bool
+	DefaultStoragePairs    DefaultStoragePairs
+	HasStorageFeatures     bool
+	StorageFeatures        StorageFeatures
+	HasWorkDir             bool
+	WorkDir                string
 	// Enable features
+	hasEnableVirtualDir bool
+	EnableVirtualDir    bool
 	// Default pairs
 }
 
@@ -114,15 +175,71 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 	for _, v := range opts {
 		switch v.Key {
 		// Required pairs
+		case "credential":
+			if result.HasCredential {
+				continue
+			}
+			result.HasCredential = true
+			result.Credential = v.Value.(string)
+		case "endpoint":
+			if result.HasEndpoint {
+				continue
+			}
+			result.HasEndpoint = true
+			result.Endpoint = v.Value.(string)
+		case "name":
+			if result.HasName {
+				continue
+			}
+			result.HasName = true
+			result.Name = v.Value.(string)
 		// Optional pairs
+		case "default_storage_pairs":
+			if result.HasDefaultStoragePairs {
+				continue
+			}
+			result.HasDefaultStoragePairs = true
+			result.DefaultStoragePairs = v.Value.(DefaultStoragePairs)
+		case "storage_features":
+			if result.HasStorageFeatures {
+				continue
+			}
+			result.HasStorageFeatures = true
+			result.StorageFeatures = v.Value.(StorageFeatures)
+		case "work_dir":
+			if result.HasWorkDir {
+				continue
+			}
+			result.HasWorkDir = true
+			result.WorkDir = v.Value.(string)
 		// Enable features
-		// Default pairs
+		case "enable_virtual_dir":
+			if result.hasEnableVirtualDir {
+				continue
+			}
+			result.hasEnableVirtualDir = true
+			result.EnableVirtualDir = true
+			// Default pairs
 		}
 	}
 
 	// Enable features
+	if result.hasEnableVirtualDir {
+		result.HasStorageFeatures = true
+		result.StorageFeatures.VirtualDir = true
+	}
 
 	// Default pairs
+
+	if !result.HasCredential {
+		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"credential"}}
+	}
+	if !result.HasEndpoint {
+		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"endpoint"}}
+	}
+	if !result.HasName {
+		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"name"}}
+	}
 
 	return result, nil
 }
