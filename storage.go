@@ -33,7 +33,11 @@ func (s *Storage) create(path string, opt pairStorageCreate) (o *Object) {
 func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCreateDir) (o *Object, err error) {
 	rp := s.getAbsPath(path)
 
-	properties := azfile.SMBProperties{}
+	attribute := azfile.FileAttributeNone
+
+	properties := azfile.SMBProperties{
+		FileAttributes: &attribute,
+	}
 
 	_, err = s.client.NewDirectoryURL(path).Create(ctx, nil, properties)
 	if err != nil {
