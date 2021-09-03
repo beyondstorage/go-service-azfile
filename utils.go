@@ -25,6 +25,7 @@ type Storage struct {
 	features     StorageFeatures
 
 	types.UnimplementedStorager
+	types.UnimplementedDirer
 }
 
 // String implements Storager.String
@@ -54,6 +55,10 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 		workDir: "/",
 	}
 
+	if opt.HasWorkDir {
+		store.workDir = opt.WorkDir
+	}
+
 	ep, err := endpoint.Parse(opt.Endpoint)
 	if err != nil {
 		return nil, err
@@ -68,6 +73,13 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 	default:
 		return nil, services.PairUnsupportedError{Pair: ps.WithEndpoint(opt.Endpoint)}
 	}
+
+	if strings.HasPrefix(store.workDir, "/") {
+		uri = fmt.Sprintln(uri + store.workDir)
+	} else {
+		uri = fmt.Sprintln(uri + "/" + store.workDir)
+	}
+
 	primaryURL, _ := url.Parse(uri)
 
 	cred, err := credential.Parse(opt.Credential)
@@ -97,9 +109,6 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 
 	store.client = azfile.NewDirectoryURL(*primaryURL, p)
 
-	if opt.HasWorkDir {
-		store.workDir = opt.WorkDir
-	}
 	if opt.HasDefaultStoragePairs {
 		store.defaultPairs = opt.DefaultStoragePairs
 	}

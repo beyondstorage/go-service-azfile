@@ -80,21 +80,6 @@ func WithDefaultStoragePairs(v DefaultStoragePairs) Pair {
 	}
 }
 
-// WithEnableVirtualDir will apply enable_virtual_dir value to Options.
-//
-// VirtualDir virtual_dir feature is designed for a service that doesn't have native dir support but wants to provide simulated operations.
-//
-// - If this feature is disabled (the default behavior), the service will behave like it doesn't have any dir support.
-// - If this feature is enabled, the service will support simulated dir behavior in create_dir, create, list, delete, and so on.
-//
-// This feature was introduced in GSP-109.
-func WithEnableVirtualDir() Pair {
-	return Pair{
-		Key:   "enable_virtual_dir",
-		Value: true,
-	}
-}
-
 // WithStorageFeatures will apply storage_features value to Options.
 //
 // StorageFeatures set storage features
@@ -112,7 +97,6 @@ var pairMap = map[string]string{
 	"continuation_token":    "string",
 	"credential":            "string",
 	"default_storage_pairs": "DefaultStoragePairs",
-	"enable_virtual_dir":    "bool",
 	"endpoint":              "string",
 	"expire":                "time.Duration",
 	"http_client_options":   "*httpclient.Options",
@@ -129,17 +113,11 @@ var pairMap = map[string]string{
 	"work_dir":              "string",
 }
 var (
+	_ Direr    = &Storage{}
 	_ Storager = &Storage{}
 )
 
 type StorageFeatures struct {
-	// VirtualDir virtual_dir feature is designed for a service that doesn't have native dir support but wants to provide simulated operations.
-	//
-	// - If this feature is disabled (the default behavior), the service will behave like it doesn't have any dir support.
-	// - If this feature is enabled, the service will support simulated dir behavior in create_dir, create, list, delete, and so on.
-	//
-	// This feature was introduced in GSP-109.
-	VirtualDir bool
 }
 
 // pairStorageNew is the parsed struct
@@ -161,8 +139,6 @@ type pairStorageNew struct {
 	HasWorkDir             bool
 	WorkDir                string
 	// Enable features
-	hasEnableVirtualDir bool
-	EnableVirtualDir    bool
 	// Default pairs
 }
 
@@ -212,22 +188,12 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 			}
 			result.HasWorkDir = true
 			result.WorkDir = v.Value.(string)
-		// Enable features
-		case "enable_virtual_dir":
-			if result.hasEnableVirtualDir {
-				continue
-			}
-			result.hasEnableVirtualDir = true
-			result.EnableVirtualDir = true
+			// Enable features
 			// Default pairs
 		}
 	}
 
 	// Enable features
-	if result.hasEnableVirtualDir {
-		result.HasStorageFeatures = true
-		result.StorageFeatures.VirtualDir = true
-	}
 
 	// Default pairs
 
@@ -246,13 +212,14 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 
 // DefaultStoragePairs is default pairs for specific action
 type DefaultStoragePairs struct {
-	Create   []Pair
-	Delete   []Pair
-	List     []Pair
-	Metadata []Pair
-	Read     []Pair
-	Stat     []Pair
-	Write    []Pair
+	Create    []Pair
+	CreateDir []Pair
+	Delete    []Pair
+	List      []Pair
+	Metadata  []Pair
+	Read      []Pair
+	Stat      []Pair
+	Write     []Pair
 }
 
 // pairStorageCreate is the parsed struct
@@ -279,6 +246,29 @@ func (s *Storage) parsePairStorageCreate(opts []Pair) (pairStorageCreate, error)
 			continue
 		default:
 			return pairStorageCreate{}, services.PairUnsupportedError{Pair: v}
+		}
+	}
+
+	// Check required pairs.
+
+	return result, nil
+}
+
+// pairStorageCreateDir is the parsed struct
+type pairStorageCreateDir struct {
+	pairs []Pair
+}
+
+// parsePairStorageCreateDir will parse Pair slice into *pairStorageCreateDir
+func (s *Storage) parsePairStorageCreateDir(opts []Pair) (pairStorageCreateDir, error) {
+	result := pairStorageCreateDir{
+		pairs: opts,
+	}
+
+	for _, v := range opts {
+		switch v.Key {
+		default:
+			return pairStorageCreateDir{}, services.PairUnsupportedError{Pair: v}
 		}
 	}
 
@@ -522,6 +512,31 @@ func (s *Storage) Create(path string, pairs ...Pair) (o *Object) {
 	opt, _ = s.parsePairStorageCreate(pairs)
 
 	return s.create(path, opt)
+}
+
+// CreateDir will create a new dir object.
+//
+// This function will create a context by default.
+func (s *Storage) CreateDir(path string, pairs ...Pair) (o *Object, err error) {
+	ctx := context.Background()
+	return s.CreateDirWithContext(ctx, path, pairs...)
+}
+
+// CreateDirWithContext will create a new dir object.
+func (s *Storage) CreateDirWithContext(ctx context.Context, path string, pairs ...Pair) (o *Object, err error) {
+	defer func() {
+		err = s.formatError("create_dir", err, path)
+	}()
+
+	pairs = append(pairs, s.defaultPairs.CreateDir...)
+	var opt pairStorageCreateDir
+
+	opt, err = s.parsePairStorageCreateDir(pairs)
+	if err != nil {
+		return
+	}
+
+	return s.createDir(ctx, path, opt)
 }
 
 // Delete will delete an object from service.

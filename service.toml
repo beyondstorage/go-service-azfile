@@ -1,7 +1,7 @@
 name = "azfile"
 
 [namespace.storage]
-features = ["virtual_dir"]
+implement = ["direr"]
 
 [namespace.storage.new]
 required = ["name", "credential", "endpoint"]

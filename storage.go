@@ -8,7 +8,6 @@ import (
 
 	"github.com/Azure/azure-storage-file-go/azfile"
 
-	ps "github.com/beyondstorage/go-storage/v4/pairs"
 	"github.com/beyondstorage/go-storage/v4/pkg/iowrap"
 	"github.com/beyondstorage/go-storage/v4/services"
 	. "github.com/beyondstorage/go-storage/v4/types"
@@ -18,11 +17,6 @@ func (s *Storage) create(path string, opt pairStorageCreate) (o *Object) {
 	rp := s.getAbsPath(path)
 
 	if opt.HasObjectMode && opt.ObjectMode.IsDir() {
-		if !s.features.VirtualDir {
-			return
-		}
-
-		rp += "/"
 		o = s.newObject(true)
 		o.Mode |= ModeDir
 	} else {
@@ -36,18 +30,29 @@ func (s *Storage) create(path string, opt pairStorageCreate) (o *Object) {
 	return o
 }
 
-func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete) (err error) {
+func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCreateDir) (o *Object, err error) {
 	rp := s.getAbsPath(path)
 
-	if opt.HasObjectMode && opt.ObjectMode.IsDir() {
-		if !s.features.VirtualDir {
-			err = services.PairUnsupportedError{Pair: ps.WithObjectMode(opt.ObjectMode)}
-			return err
-		}
+	properties := azfile.SMBProperties{}
 
-		_, err = s.client.NewDirectoryURL(rp).Delete(ctx)
+	_, err = s.client.NewDirectoryURL(path).Create(ctx, nil, properties)
+	if err != nil {
+		return nil, err
+	}
+
+	o = s.newObject(true)
+	o.ID = rp
+	o.Path = path
+	o.Mode |= ModeDir
+
+	return
+}
+
+func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete) (err error) {
+	if opt.HasObjectMode && opt.ObjectMode.IsDir() {
+		_, err = s.client.NewDirectoryURL(path).Delete(ctx)
 	} else {
-		_, err = s.client.NewFileURL(rp).Delete(ctx)
+		_, err = s.client.NewFileURL(path).Delete(ctx)
 	}
 
 	if err != nil {
@@ -170,8 +175,6 @@ func (s *Storage) nextObjectPageByPrefix(ctx context.Context, page *ObjectPage) 
 }
 
 func (s *Storage) read(ctx context.Context, path string, w io.Writer, opt pairStorageRead) (n int64, err error) {
-	rp := s.getAbsPath(path)
-
 	offset := int64(0)
 	if opt.HasOffset {
 		offset = opt.Offset
@@ -182,7 +185,7 @@ func (s *Storage) read(ctx context.Context, path string, w io.Writer, opt pairSt
 		count = opt.Size
 	}
 
-	output, err := s.client.NewFileURL(rp).Download(ctx, offset, count, false)
+	output, err := s.client.NewFileURL(path).Download(ctx, offset, count, false)
 	if err != nil {
 		return 0, err
 	}
@@ -208,14 +211,9 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 	var fileOutput *azfile.FileGetPropertiesResponse
 
 	if opt.HasObjectMode && opt.ObjectMode.IsDir() {
-		if !s.features.VirtualDir {
-			err = services.PairUnsupportedError{Pair: ps.WithObjectMode(opt.ObjectMode)}
-			return
-		}
-
-		dirOutput, err = s.client.NewDirectoryURL(rp).GetProperties(ctx)
+		dirOutput, err = s.client.NewDirectoryURL(path).GetProperties(ctx)
 	} else {
-		fileOutput, err = s.client.NewFileURL(rp).GetProperties(ctx)
+		fileOutput, err = s.client.NewFileURL(path).GetProperties(ctx)
 	}
 
 	if err != nil {
@@ -267,15 +265,13 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 }
 
 func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int64, opt pairStorageWrite) (n int64, err error) {
-	rp := s.getAbsPath(path)
-
 	if opt.HasIoCallback {
 		r = iowrap.CallbackReader(r, opt.IoCallback)
 	}
 
 	body := iowrap.SizedReadSeekCloser(r, size)
 
-	_, err = s.client.NewFileURL(rp).UploadRange(ctx, 0, body, nil)
+	_, err = s.client.NewFileURL(path).UploadRange(ctx, 0, body, nil)
 	if err != nil {
 		return 0, err
 	}
