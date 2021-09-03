@@ -145,7 +145,7 @@ func formatError(err error) error {
 		switch azfile.StorageErrorCodeType(e.ServiceCode()) {
 		case "":
 			switch e.Response().StatusCode {
-			case 404:
+			case fileNotFound:
 				return fmt.Errorf("%w: %v", services.ErrObjectNotExist, err)
 			default:
 				return fmt.Errorf("%w: %v", services.ErrUnexpected, err)
@@ -200,11 +200,16 @@ func (s *Storage) formatDirObject(v azfile.DirectoryItem) (o *types.Object, err 
 	return
 }
 
-func checkError(err error, expect azfile.ServiceCodeType) bool {
+const (
+	// File not found error.
+	fileNotFound = 404
+)
+
+func checkError(err error, expect int) bool {
 	e, ok := err.(azfile.StorageError)
 	if !ok {
 		return false
 	}
 
-	return e.ServiceCode() == expect
+	return e.Response().StatusCode == expect
 }

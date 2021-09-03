@@ -39,6 +39,16 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 		FileAttributes: &attribute,
 	}
 
+	_, err = s.client.NewDirectoryURL(path).GetProperties(ctx)
+	if err == nil {
+		// The directory exist, we should delete it.
+		// ref: https://github.com/beyondstorage/specs/blob/master/rfcs/134-write-behavior-consistency.md
+		_, err = s.client.NewDirectoryURL(path).Delete(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	_, err = s.client.NewDirectoryURL(path).Create(ctx, nil, properties)
 	if err != nil {
 		return nil, err
@@ -60,7 +70,12 @@ func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete
 	}
 
 	if err != nil {
-		if checkError(err, azfile.ServiceCodeResourceNotFound) {
+		// azfile Delete is not idempotent, so we need to check file not found error.
+		//
+		// References
+		// - [GSP-46](https://github.com/beyondstorage/specs/blob/master/rfcs/46-idempotent-delete.md)
+		// - https://docs.microsoft.com/en-us/rest/api/storageservices/delete-file2#remarks
+		if checkError(err, fileNotFound) {
 			err = nil
 		} else {
 			return err
@@ -273,9 +288,27 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 		r = iowrap.CallbackReader(r, opt.IoCallback)
 	}
 
-	body := iowrap.SizedReadSeekCloser(r, size)
+	headers := azfile.FileHTTPHeaders{}
 
-	_, err = s.client.NewFileURL(path).UploadRange(ctx, 0, body, nil)
+	if opt.HasContentType {
+		headers.ContentType = opt.ContentType
+	}
+
+	// `Create` only initializes the file.
+	// ref: https://docs.microsoft.com/en-us/rest/api/storageservices/create-file
+	_, err = s.client.NewFileURL(path).Create(ctx, size, headers, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	body := iowrap.SizedReadSeekCloser(r, size)
+	transactionalMD5, err := base64.StdEncoding.DecodeString(opt.ContentMd5)
+	if err != nil {
+		return 0, err
+	}
+
+	// Since `Create' only initializes the file, we need to call `UploadRange' to write the contents to the file.
+	_, err = s.client.NewFileURL(path).UploadRange(ctx, 0, body, transactionalMD5)
 	if err != nil {
 		return 0, err
 	}
