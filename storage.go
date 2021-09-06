@@ -9,7 +9,6 @@ import (
 	"github.com/Azure/azure-storage-file-go/azfile"
 
 	"github.com/beyondstorage/go-storage/v4/pkg/iowrap"
-	"github.com/beyondstorage/go-storage/v4/services"
 	. "github.com/beyondstorage/go-storage/v4/types"
 )
 
@@ -41,15 +40,15 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 
 	_, err = s.client.NewDirectoryURL(path).GetProperties(ctx)
 	if err == nil {
-		// The directory exist, we should delete it.
-		// ref: https://github.com/beyondstorage/specs/blob/master/rfcs/134-write-behavior-consistency.md
-		_, err = s.client.NewDirectoryURL(path).Delete(ctx)
-		if err != nil {
-			return nil, err
-		}
+		// The directory exist, we should reset the metadata.
+		_, err = s.client.NewDirectoryURL(path).SetMetadata(ctx, nil)
+	} else if checkError(err, fileNotFound) {
+		// The directory not exists, we should set err to nil and create the directory.
+		err = nil
+
+		_, err = s.client.NewDirectoryURL(path).Create(ctx, nil, properties)
 	}
 
-	_, err = s.client.NewDirectoryURL(path).Create(ctx, nil, properties)
 	if err != nil {
 		return nil, err
 	}
@@ -91,22 +90,7 @@ func (s *Storage) list(ctx context.Context, path string, opt pairStorageList) (o
 		prefix:     s.getAbsPath(path),
 	}
 
-	if !opt.HasListMode {
-		opt.ListMode = ListModePrefix
-	}
-
-	var nextFn NextObjectFunc
-
-	switch {
-	case opt.ListMode.IsDir():
-		nextFn = s.nextObjectPageByDir
-	case opt.ListMode.IsPrefix():
-		nextFn = s.nextObjectPageByPrefix
-	default:
-		return nil, services.ListModeInvalidError{Actual: opt.ListMode}
-	}
-
-	return NewObjectIterator(ctx, nextFn, input), nil
+	return NewObjectIterator(ctx, s.nextObjectPage, input), nil
 }
 
 func (s *Storage) metadata(opt pairStorageMetadata) (meta *StorageMeta) {
@@ -115,48 +99,9 @@ func (s *Storage) metadata(opt pairStorageMetadata) (meta *StorageMeta) {
 	return meta
 }
 
-func (s *Storage) nextObjectPageByDir(ctx context.Context, page *ObjectPage) error {
+func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
 	input := page.Status.(*objectPageStatus)
 
-	options := azfile.ListFilesAndDirectoriesOptions{
-		Prefix:     input.prefix,
-		MaxResults: input.maxResults,
-	}
-
-	output, err := s.client.ListFilesAndDirectoriesSegment(ctx, input.marker, options)
-	if err != nil {
-		return err
-	}
-
-	for _, v := range output.DirectoryItems {
-		o := s.newObject(true)
-		o.ID = v.Name
-		o.Path = s.getRelPath(v.Name)
-		o.Mode |= ModeDir
-
-		page.Data = append(page.Data, o)
-	}
-
-	for _, v := range output.FileItems {
-		o, err := s.formatFileObject(v)
-		if err != nil {
-			return err
-		}
-
-		page.Data = append(page.Data, o)
-	}
-
-	if !output.NextMarker.NotDone() {
-		return IterateDone
-	}
-
-	input.marker = output.NextMarker
-
-	return nil
-}
-
-func (s *Storage) nextObjectPageByPrefix(ctx context.Context, page *ObjectPage) error {
-	input := page.Status.(*objectPageStatus)
 	options := azfile.ListFilesAndDirectoriesOptions{
 		Prefix:     input.prefix,
 		MaxResults: input.maxResults,
@@ -181,6 +126,7 @@ func (s *Storage) nextObjectPageByPrefix(ctx context.Context, page *ObjectPage) 
 		if err != nil {
 			return err
 		}
+
 		page.Data = append(page.Data, o)
 	}
 
@@ -302,9 +248,13 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 	}
 
 	body := iowrap.SizedReadSeekCloser(r, size)
-	transactionalMD5, err := base64.StdEncoding.DecodeString(opt.ContentMd5)
-	if err != nil {
-		return 0, err
+
+	var transactionalMD5 []byte
+	if opt.HasContentMd5 {
+		transactionalMD5, err = base64.StdEncoding.DecodeString(opt.ContentMd5)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	// Since `Create' only initializes the file, we need to call `UploadRange' to write the contents to the file.
