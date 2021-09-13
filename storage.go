@@ -38,22 +38,24 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 		FileAttributes: &attribute,
 	}
 
-	_, err = s.client.NewDirectoryURL(path).GetProperties(ctx)
+	fi, err := s.client.NewDirectoryURL(path).GetProperties(ctx)
 	if err == nil {
-		// The directory exist, we should reset the metadata.
-		_, err = s.client.NewDirectoryURL(path).SetMetadata(ctx, nil)
-	} else if checkError(err, fileNotFound) {
-		// The directory not exists, we should set err to nil and create the directory.
-		err = nil
-
-		_, err = s.client.NewDirectoryURL(path).Create(ctx, nil, properties)
-	}
-
-	if err != nil {
+		// The directory exist, we should set the metadata.
+		o = s.newObject(true)
+		o.SetLastModified(fi.LastModified())
+	} else if !checkError(err, fileNotFound) {
+		// Something error other then file not found happened, return directly.
 		return nil, err
+	} else {
+		// The directory not exists, we should create the directory.
+		_, err = s.client.NewDirectoryURL(path).Create(ctx, nil, properties)
+		if err != nil {
+			return nil, err
+		}
+
+		o = s.newObject(false)
 	}
 
-	o = s.newObject(true)
 	o.ID = rp
 	o.Path = path
 	o.Mode |= ModeDir
