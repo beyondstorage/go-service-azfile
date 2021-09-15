@@ -25,6 +25,8 @@ const Type = "azfile"
 
 // ObjectSystemMetadata stores system metadata for object.
 type ObjectSystemMetadata struct {
+	// ServerEncrypted
+	ServerEncrypted bool
 }
 
 // GetObjectSystemMetadata will get ObjectSystemMetadata from Object.
@@ -68,27 +70,50 @@ func setStorageSystemMetadata(s *StorageMeta, sm StorageSystemMetadata) {
 	s.SetSystemMetadata(sm)
 }
 
+// WithDefaultStoragePairs will apply default_storage_pairs value to Options.
+//
+// DefaultStoragePairs set default pairs for storager actions
+func WithDefaultStoragePairs(v DefaultStoragePairs) Pair {
+	return Pair{
+		Key:   "default_storage_pairs",
+		Value: v,
+	}
+}
+
+// WithStorageFeatures will apply storage_features value to Options.
+//
+// StorageFeatures set storage features
+func WithStorageFeatures(v StorageFeatures) Pair {
+	return Pair{
+		Key:   "storage_features",
+		Value: v,
+	}
+}
+
 var pairMap = map[string]string{
-	"content_md5":         "string",
-	"content_type":        "string",
-	"context":             "context.Context",
-	"continuation_token":  "string",
-	"credential":          "string",
-	"endpoint":            "string",
-	"expire":              "time.Duration",
-	"http_client_options": "*httpclient.Options",
-	"interceptor":         "Interceptor",
-	"io_callback":         "func([]byte)",
-	"list_mode":           "ListMode",
-	"location":            "string",
-	"multipart_id":        "string",
-	"name":                "string",
-	"object_mode":         "ObjectMode",
-	"offset":              "int64",
-	"size":                "int64",
-	"work_dir":            "string",
+	"content_md5":           "string",
+	"content_type":          "string",
+	"context":               "context.Context",
+	"continuation_token":    "string",
+	"credential":            "string",
+	"default_storage_pairs": "DefaultStoragePairs",
+	"endpoint":              "string",
+	"expire":                "time.Duration",
+	"http_client_options":   "*httpclient.Options",
+	"interceptor":           "Interceptor",
+	"io_callback":           "func([]byte)",
+	"list_mode":             "ListMode",
+	"location":              "string",
+	"multipart_id":          "string",
+	"name":                  "string",
+	"object_mode":           "ObjectMode",
+	"offset":                "int64",
+	"size":                  "int64",
+	"storage_features":      "StorageFeatures",
+	"work_dir":              "string",
 }
 var (
+	_ Direr    = &Storage{}
 	_ Storager = &Storage{}
 )
 
@@ -100,7 +125,19 @@ type pairStorageNew struct {
 	pairs []Pair
 
 	// Required pairs
+	HasCredential bool
+	Credential    string
+	HasEndpoint   bool
+	Endpoint      string
+	HasName       bool
+	Name          string
 	// Optional pairs
+	HasDefaultStoragePairs bool
+	DefaultStoragePairs    DefaultStoragePairs
+	HasStorageFeatures     bool
+	StorageFeatures        StorageFeatures
+	HasWorkDir             bool
+	WorkDir                string
 	// Enable features
 	// Default pairs
 }
@@ -114,9 +151,45 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 	for _, v := range opts {
 		switch v.Key {
 		// Required pairs
+		case "credential":
+			if result.HasCredential {
+				continue
+			}
+			result.HasCredential = true
+			result.Credential = v.Value.(string)
+		case "endpoint":
+			if result.HasEndpoint {
+				continue
+			}
+			result.HasEndpoint = true
+			result.Endpoint = v.Value.(string)
+		case "name":
+			if result.HasName {
+				continue
+			}
+			result.HasName = true
+			result.Name = v.Value.(string)
 		// Optional pairs
-		// Enable features
-		// Default pairs
+		case "default_storage_pairs":
+			if result.HasDefaultStoragePairs {
+				continue
+			}
+			result.HasDefaultStoragePairs = true
+			result.DefaultStoragePairs = v.Value.(DefaultStoragePairs)
+		case "storage_features":
+			if result.HasStorageFeatures {
+				continue
+			}
+			result.HasStorageFeatures = true
+			result.StorageFeatures = v.Value.(StorageFeatures)
+		case "work_dir":
+			if result.HasWorkDir {
+				continue
+			}
+			result.HasWorkDir = true
+			result.WorkDir = v.Value.(string)
+			// Enable features
+			// Default pairs
 		}
 	}
 
@@ -124,18 +197,29 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 
 	// Default pairs
 
+	if !result.HasCredential {
+		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"credential"}}
+	}
+	if !result.HasEndpoint {
+		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"endpoint"}}
+	}
+	if !result.HasName {
+		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"name"}}
+	}
+
 	return result, nil
 }
 
 // DefaultStoragePairs is default pairs for specific action
 type DefaultStoragePairs struct {
-	Create   []Pair
-	Delete   []Pair
-	List     []Pair
-	Metadata []Pair
-	Read     []Pair
-	Stat     []Pair
-	Write    []Pair
+	Create    []Pair
+	CreateDir []Pair
+	Delete    []Pair
+	List      []Pair
+	Metadata  []Pair
+	Read      []Pair
+	Stat      []Pair
+	Write     []Pair
 }
 
 // pairStorageCreate is the parsed struct
@@ -162,6 +246,29 @@ func (s *Storage) parsePairStorageCreate(opts []Pair) (pairStorageCreate, error)
 			continue
 		default:
 			return pairStorageCreate{}, services.PairUnsupportedError{Pair: v}
+		}
+	}
+
+	// Check required pairs.
+
+	return result, nil
+}
+
+// pairStorageCreateDir is the parsed struct
+type pairStorageCreateDir struct {
+	pairs []Pair
+}
+
+// parsePairStorageCreateDir will parse Pair slice into *pairStorageCreateDir
+func (s *Storage) parsePairStorageCreateDir(opts []Pair) (pairStorageCreateDir, error) {
+	result := pairStorageCreateDir{
+		pairs: opts,
+	}
+
+	for _, v := range opts {
+		switch v.Key {
+		default:
+			return pairStorageCreateDir{}, services.PairUnsupportedError{Pair: v}
 		}
 	}
 
@@ -405,6 +512,31 @@ func (s *Storage) Create(path string, pairs ...Pair) (o *Object) {
 	opt, _ = s.parsePairStorageCreate(pairs)
 
 	return s.create(path, opt)
+}
+
+// CreateDir will create a new dir object.
+//
+// This function will create a context by default.
+func (s *Storage) CreateDir(path string, pairs ...Pair) (o *Object, err error) {
+	ctx := context.Background()
+	return s.CreateDirWithContext(ctx, path, pairs...)
+}
+
+// CreateDirWithContext will create a new dir object.
+func (s *Storage) CreateDirWithContext(ctx context.Context, path string, pairs ...Pair) (o *Object, err error) {
+	defer func() {
+		err = s.formatError("create_dir", err, path)
+	}()
+
+	pairs = append(pairs, s.defaultPairs.CreateDir...)
+	var opt pairStorageCreateDir
+
+	opt, err = s.parsePairStorageCreateDir(pairs)
+	if err != nil {
+		return
+	}
+
+	return s.createDir(ctx, path, opt)
 }
 
 // Delete will delete an object from service.
