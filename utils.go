@@ -74,12 +74,6 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 		return nil, services.PairUnsupportedError{Pair: ps.WithEndpoint(opt.Endpoint)}
 	}
 
-	if strings.HasPrefix(store.workDir, "/") {
-		uri = fmt.Sprintln(uri + store.workDir)
-	} else {
-		uri = fmt.Sprintln(uri + "/" + store.workDir)
-	}
-
 	primaryURL, _ := url.Parse(uri)
 
 	cred, err := credential.Parse(opt.Credential)
@@ -107,7 +101,8 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 		},
 	})
 
-	store.client = azfile.NewDirectoryURL(*primaryURL, p)
+	workDir := strings.TrimPrefix(store.workDir, "/")
+	store.client = azfile.NewDirectoryURL(*primaryURL, p).NewDirectoryURL(workDir)
 
 	if opt.HasDefaultStoragePairs {
 		store.defaultPairs = opt.DefaultStoragePairs

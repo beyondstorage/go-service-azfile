@@ -48,7 +48,7 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 		return nil, err
 	} else {
 		// The directory not exists, we should create the directory.
-		_, err = s.client.NewDirectoryURL(path).Create(ctx, nil, properties)
+		_, err = s.client.NewDirectoryURL(path).Create(ctx, azfile.Metadata{}, properties)
 		if err != nil {
 			return nil, err
 		}
@@ -244,7 +244,7 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 
 	// `Create` only initializes the file.
 	// ref: https://docs.microsoft.com/en-us/rest/api/storageservices/create-file
-	_, err = s.client.NewFileURL(path).Create(ctx, size, headers, nil)
+	_, err = s.client.NewFileURL(path).Create(ctx, size, headers, azfile.Metadata{})
 	if err != nil {
 		return 0, err
 	}

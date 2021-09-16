@@ -131,8 +131,6 @@ type pairStorageNew struct {
 	Credential    string
 	HasEndpoint   bool
 	Endpoint      string
-	HasName       bool
-	Name          string
 	// Optional pairs
 	HasDefaultStoragePairs bool
 	DefaultStoragePairs    DefaultStoragePairs
@@ -169,12 +167,6 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 			}
 			result.HasEndpoint = true
 			result.Endpoint = v.Value.(string)
-		case "name":
-			if result.HasName {
-				continue
-			}
-			result.HasName = true
-			result.Name = v.Value.(string)
 		// Optional pairs
 		case "default_storage_pairs":
 			if result.HasDefaultStoragePairs {
@@ -229,9 +221,6 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 	}
 	if !result.HasEndpoint {
 		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"endpoint"}}
-	}
-	if !result.HasName {
-		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"name"}}
 	}
 
 	return result, nil
