@@ -1,10 +1,10 @@
 package azfile
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/Azure/azure-storage-file-go/azfile"
 
@@ -90,19 +90,27 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 	}
 
 	p := azfile.NewPipeline(credValue, azfile.PipelineOptions{
-		Retry: azfile.RetryOptions{
-			// Use a fixed back-off retry policy.
-			Policy: 1,
-			// A value of 1 means 1 try and no retries.
-			MaxTries: 1,
-			// Set a long enough timeout to adopt our timeout control.
-			// This value could be adjusted to context deadline if request context has a deadline set.
-			TryTimeout: 720 * time.Hour,
-		},
+		Retry: azfile.RetryOptions{},
 	})
 
+	serviceURL := azfile.NewServiceURL(*primaryURL, p)
+
+	ctx := context.Background()
+	shareURL := serviceURL.NewShareURL(opt.Name)
+	_, err = shareURL.Create(ctx, azfile.Metadata{}, 0)
+	if err != nil && checkError(err, shareAlreadyExists) {
+		err = nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	workDir := strings.TrimPrefix(store.workDir, "/")
-	store.client = azfile.NewDirectoryURL(*primaryURL, p).NewDirectoryURL(workDir)
+	store.client = shareURL.NewDirectoryURL(workDir)
+	_, err = store.client.Create(ctx, azfile.Metadata{}, azfile.SMBProperties{})
+	if err != nil {
+		return nil, err
+	}
 
 	if opt.HasDefaultStoragePairs {
 		store.defaultPairs = opt.DefaultStoragePairs
@@ -198,6 +206,9 @@ func (s *Storage) formatDirObject(v azfile.DirectoryItem) (o *types.Object, err 
 const (
 	// File not found error.
 	fileNotFound = 404
+
+	// Share already exists
+	shareAlreadyExists = 409
 )
 
 func checkError(err error, expect int) bool {

@@ -4,10 +4,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/google/uuid"
+
 	azfile "github.com/beyondstorage/go-service-azfile"
 	ps "github.com/beyondstorage/go-storage/v4/pairs"
 	"github.com/beyondstorage/go-storage/v4/types"
-	"github.com/google/uuid"
 )
 
 func setupTest(t *testing.T) types.Storager {
@@ -17,6 +18,7 @@ func setupTest(t *testing.T) types.Storager {
 		ps.WithCredential(os.Getenv("STORAGE_AZFILE_CREDENTIAL")),
 		ps.WithEndpoint(os.Getenv("STORAGE_AZFILE_ENDPOINT")),
 		ps.WithWorkDir("/"+uuid.New().String()+"/"),
+		ps.WithName(os.Getenv("STORAGE_AZFILE_NAME")),
 	)
 	if err != nil {
 		t.Errorf("new storager: %v", err)

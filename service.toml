@@ -4,7 +4,7 @@ name = "azfile"
 implement = ["direr"]
 
 [namespace.storage.new]
-required = ["credential", "endpoint"]
+required = ["name", "credential", "endpoint"]
 optional = ["storage_features", "default_storage_pairs", "work_dir"]
 
 [namespace.storage.op.create]

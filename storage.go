@@ -89,7 +89,7 @@ func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete
 func (s *Storage) list(ctx context.Context, path string, opt pairStorageList) (oi *ObjectIterator, err error) {
 	input := &objectPageStatus{
 		maxResults: 200,
-		prefix:     s.getAbsPath(path),
+		prefix:     path,
 	}
 
 	return NewObjectIterator(ctx, s.nextObjectPage, input), nil
