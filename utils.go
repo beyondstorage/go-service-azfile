@@ -97,13 +97,6 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 
 	ctx := context.Background()
 	shareURL := serviceURL.NewShareURL(opt.Name)
-	_, err = shareURL.Create(ctx, azfile.Metadata{}, 0)
-	if err != nil && checkError(err, shareAlreadyExists) {
-		err = nil
-	}
-	if err != nil {
-		return nil, err
-	}
 
 	workDir := strings.TrimPrefix(store.workDir, "/")
 	store.client = shareURL.NewDirectoryURL(workDir)
@@ -206,9 +199,6 @@ func (s *Storage) formatDirObject(v azfile.DirectoryItem) (o *types.Object, err 
 const (
 	// File not found error.
 	fileNotFound = 404
-
-	// Share already exists
-	shareAlreadyExists = 409
 )
 
 func checkError(err error, expect int) bool {
