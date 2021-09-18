@@ -1,10 +1,10 @@
 package azfile
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/Azure/azure-storage-file-go/azfile"
 
@@ -74,12 +74,6 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 		return nil, services.PairUnsupportedError{Pair: ps.WithEndpoint(opt.Endpoint)}
 	}
 
-	if strings.HasPrefix(store.workDir, "/") {
-		uri = fmt.Sprintln(uri + store.workDir)
-	} else {
-		uri = fmt.Sprintln(uri + "/" + store.workDir)
-	}
-
 	primaryURL, _ := url.Parse(uri)
 
 	cred, err := credential.Parse(opt.Credential)
@@ -96,18 +90,20 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 	}
 
 	p := azfile.NewPipeline(credValue, azfile.PipelineOptions{
-		Retry: azfile.RetryOptions{
-			// Use a fixed back-off retry policy.
-			Policy: 1,
-			// A value of 1 means 1 try and no retries.
-			MaxTries: 1,
-			// Set a long enough timeout to adopt our timeout control.
-			// This value could be adjusted to context deadline if request context has a deadline set.
-			TryTimeout: 720 * time.Hour,
-		},
+		Retry: azfile.RetryOptions{},
 	})
 
-	store.client = azfile.NewDirectoryURL(*primaryURL, p)
+	serviceURL := azfile.NewServiceURL(*primaryURL, p)
+
+	ctx := context.Background()
+	shareURL := serviceURL.NewShareURL(opt.Name)
+
+	workDir := strings.TrimPrefix(store.workDir, "/")
+	store.client = shareURL.NewDirectoryURL(workDir)
+	_, err = store.client.Create(ctx, azfile.Metadata{}, azfile.SMBProperties{})
+	if err != nil {
+		return nil, err
+	}
 
 	if opt.HasDefaultStoragePairs {
 		store.defaultPairs = opt.DefaultStoragePairs
