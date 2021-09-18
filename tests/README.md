@@ -21,6 +21,7 @@ Set following environment variables:
 ```shell
 export STORAGE_AZFILE_INTEGRATION_TEST=on
 export STORAGE_AZFILE_CREDENTIAL=hmac:account_name:account_key
+export STORAGE_AZFILE_NAME=sharename
 export STORAGE_AZFILE_ENDPOINT=https:accountname.file.core.windows.net
 ```
 
