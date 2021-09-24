@@ -3,8 +3,10 @@ package azfile
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/Azure/azure-storage-file-go/azfile"
 
@@ -236,6 +238,16 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 		r = iowrap.CallbackReader(r, opt.IoCallback)
 	}
 
+	// According to GSP-751, we should allow the user to pass in a nil io.Reader.
+	// ref: https://github.com/beyondstorage/go-storage/blob/master/docs/rfcs/751-write-empty-file-behavior.md
+	if r == nil && size == 0 {
+		r = strings.NewReader("")
+	} else if r == nil && size != 0 {
+		return 0, fmt.Errorf("reader is nil but size is not 0")
+	} else {
+		r = io.LimitReader(r, size)
+	}
+
 	headers := azfile.FileHTTPHeaders{}
 
 	if opt.HasContentType {
@@ -249,20 +261,22 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 		return 0, err
 	}
 
-	body := iowrap.SizedReadSeekCloser(r, size)
+	if size > 0 {
+		body := iowrap.SizedReadSeekCloser(r, size)
 
-	var transactionalMD5 []byte
-	if opt.HasContentMd5 {
-		transactionalMD5, err = base64.StdEncoding.DecodeString(opt.ContentMd5)
+		var transactionalMD5 []byte
+		if opt.HasContentMd5 {
+			transactionalMD5, err = base64.StdEncoding.DecodeString(opt.ContentMd5)
+			if err != nil {
+				return 0, err
+			}
+		}
+
+		// Since `Create' only initializes the file, we need to call `UploadRange' to write the contents to the file.
+		_, err = s.client.NewFileURL(path).UploadRange(ctx, 0, body, transactionalMD5)
 		if err != nil {
 			return 0, err
 		}
-	}
-
-	// Since `Create' only initializes the file, we need to call `UploadRange' to write the contents to the file.
-	_, err = s.client.NewFileURL(path).UploadRange(ctx, 0, body, transactionalMD5)
-	if err != nil {
-		return 0, err
 	}
 
 	return size, nil
