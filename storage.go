@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -234,6 +235,12 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 }
 
 func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int64, opt pairStorageWrite) (n int64, err error) {
+	relativePath := s.getRelativePath(path)
+	err = s.mkDirs(ctx, filepath.Dir(relativePath))
+	if err != nil {
+		return
+	}
+
 	if opt.HasIoCallback {
 		r = iowrap.CallbackReader(r, opt.IoCallback)
 	}
@@ -256,7 +263,7 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 
 	// `Create` only initializes the file.
 	// ref: https://docs.microsoft.com/en-us/rest/api/storageservices/create-file
-	_, err = s.client.NewFileURL(s.getRelativePath(path)).Create(ctx, size, headers, azfile.Metadata{})
+	_, err = s.client.NewFileURL(relativePath).Create(ctx, size, headers, azfile.Metadata{})
 	if err != nil {
 		return 0, err
 	}
@@ -273,7 +280,7 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 		}
 
 		// Since `Create' only initializes the file, we need to call `UploadRange' to write the contents to the file.
-		_, err = s.client.NewFileURL(path).UploadRange(ctx, 0, body, transactionalMD5)
+		_, err = s.client.NewFileURL(relativePath).UploadRange(ctx, 0, body, transactionalMD5)
 		if err != nil {
 			return 0, err
 		}
