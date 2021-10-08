@@ -50,7 +50,7 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 		return nil, err
 	} else {
 		// The directory not exists, we should create the directory.
-		_, err = s.client.NewDirectoryURL(path).Create(ctx, azfile.Metadata{}, properties)
+		_, err = s.client.NewDirectoryURL(s.getRelativePath(path)).Create(ctx, azfile.Metadata{}, properties)
 		if err != nil {
 			return nil, err
 		}
@@ -67,9 +67,9 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 
 func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete) (err error) {
 	if opt.HasObjectMode && opt.ObjectMode.IsDir() {
-		_, err = s.client.NewDirectoryURL(path).Delete(ctx)
+		_, err = s.client.NewDirectoryURL(s.getRelativePath(path)).Delete(ctx)
 	} else {
-		_, err = s.client.NewFileURL(path).Delete(ctx)
+		_, err = s.client.NewFileURL(s.getRelativePath(path)).Delete(ctx)
 	}
 
 	if err != nil {
@@ -91,7 +91,7 @@ func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete
 func (s *Storage) list(ctx context.Context, path string, opt pairStorageList) (oi *ObjectIterator, err error) {
 	input := &objectPageStatus{
 		maxResults: 200,
-		prefix:     path,
+		prefix:     s.getRelativePath(path),
 	}
 
 	return NewObjectIterator(ctx, s.nextObjectPage, input), nil
@@ -154,7 +154,7 @@ func (s *Storage) read(ctx context.Context, path string, w io.Writer, opt pairSt
 		count = opt.Size
 	}
 
-	output, err := s.client.NewFileURL(path).Download(ctx, offset, count, false)
+	output, err := s.client.NewFileURL(s.getRelativePath(path)).Download(ctx, offset, count, false)
 	if err != nil {
 		return 0, err
 	}
@@ -180,9 +180,9 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 	var fileOutput *azfile.FileGetPropertiesResponse
 
 	if opt.HasObjectMode && opt.ObjectMode.IsDir() {
-		dirOutput, err = s.client.NewDirectoryURL(path).GetProperties(ctx)
+		dirOutput, err = s.client.NewDirectoryURL(s.getRelativePath(path)).GetProperties(ctx)
 	} else {
-		fileOutput, err = s.client.NewFileURL(path).GetProperties(ctx)
+		fileOutput, err = s.client.NewFileURL(s.getRelativePath(path)).GetProperties(ctx)
 	}
 
 	if err != nil {
@@ -256,7 +256,7 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 
 	// `Create` only initializes the file.
 	// ref: https://docs.microsoft.com/en-us/rest/api/storageservices/create-file
-	_, err = s.client.NewFileURL(path).Create(ctx, size, headers, azfile.Metadata{})
+	_, err = s.client.NewFileURL(s.getRelativePath(path)).Create(ctx, size, headers, azfile.Metadata{})
 	if err != nil {
 		return 0, err
 	}

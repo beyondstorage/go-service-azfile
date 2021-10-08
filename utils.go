@@ -170,6 +170,16 @@ func (s *Storage) getRelPath(path string) string {
 	return strings.TrimPrefix(path, prefix)
 }
 
+// getRelativePath will get relative path(fileName or directoryName) based on workDir for DirectoryURL or FileURL.
+func (s *Storage) getRelativePath(path string) string {
+	if strings.HasPrefix(path, s.workDir) {
+		relativePath := strings.TrimPrefix(path, s.workDir)
+		return strings.TrimPrefix(relativePath, "/")
+	}
+
+	return path
+}
+
 func (s *Storage) newObject(done bool) *types.Object {
 	return types.NewObject(s, done)
 }
